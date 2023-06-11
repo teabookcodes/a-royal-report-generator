@@ -1,0 +1,11 @@
+# Environment variables
+.env
+
+# API data
+*.json
+
+# Report files with data
+*.csv
+*.ods
+*.pdf
+
