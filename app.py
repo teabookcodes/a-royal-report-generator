@@ -6,9 +6,7 @@ import csv
 import datetime
 import re
 from dotenv import load_dotenv
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-from reportlab.lib import colors
+from fpdf import FPDF
 
 load_dotenv()
 
@@ -24,7 +22,7 @@ API_URL = os.getenv('API_URL')
 API_TOKEN = os.getenv('API_TOKEN')
 TENANT_ID = os.getenv('TENANT_ID')
 # TIMESTAMP = unix_timestamp
-TIMESTAMP = "1686261600000"  # Pátek 9.6. 00:00
+TIMESTAMP = "1686520800000"  # Pondělí 12.6. 00:00
 SEARCH_QUERY = f"occurrenceTime=gt={TIMESTAMP}"
 
 headers = {"X-Durable-Access-Token": API_TOKEN,
@@ -56,20 +54,21 @@ filtered_data_a = [instance for instance in data if instance['name'] in [
     "1 - Nakládka:", "4 - Odjezd:"]]
 
 # Vytvoř první CSV soubor s filtrovanými daty
-csv_file_a = open('report-a.csv', 'w', newline='')
+csv_file_a = open('report-nakladka.csv', 'w', newline='')
 csv_writer_a = csv.writer(csv_file_a)
 
 # Vytvoř header tabulky pro první soubor
-csv_writer_a.writerow(['ID', 'Datum a cas udalosti',
-                      'Udalost', 'SPZ tahace/vozidla'])
+csv_writer_a.writerow(['Id', 'Datum a čas události',
+                      'Událost', 'SPZ tahače/vozidla'])
 
 # Vypiš řádky dat pro první soubor
 for info in filtered_data_a:
     occurrence_time = datetime.datetime.fromtimestamp(
         info['occurrenceTime'] / 1000)  # Konvertuj na sekundy
     formatted_time = occurrence_time.strftime(
-        '%Y-%m-%d %H:%M:%S')  # Cílový formát data
-    spz = re.sub(r'[\s.-]', '', info['fieldInstances'][0]['textValue']).upper()
+        '%d. %m. %Y %H:%M:%S')  # Cílový formát data
+    spz = re.sub(r'\s|\.|-|:', '',
+                 info['fieldInstances'][0]['textValue']).upper()
     csv_writer_a.writerow([info['id'], formatted_time,
                           info['name'], spz])
 
@@ -81,20 +80,21 @@ filtered_data_b = [instance for instance in data if instance['name'] in [
     "2 - Vykládka:", "4 - Odjezd:"]]
 
 # Vytvoř druhý CSV soubor s filtrovanými daty
-csv_file_b = open('report-b.csv', 'w', newline='')
+csv_file_b = open('report-vykladka.csv', 'w', newline='')
 csv_writer_b = csv.writer(csv_file_b)
 
 # Vytvoř header tabulky pro druhý soubor
-csv_writer_b.writerow(['ID', 'Datum a cas udalosti',
-                      'Udalost', 'SPZ tahace/vozidla'])
+csv_writer_b.writerow(['Id', 'Datum a čas události',
+                      'Událost', 'SPZ tahače/vozidla'])
 
 # Vypiš řádky dat pro druhý soubor
 for info in filtered_data_b:
     occurrence_time = datetime.datetime.fromtimestamp(
         info['occurrenceTime'] / 1000)  # Konvertuj na sekundy
     formatted_time = occurrence_time.strftime(
-        '%Y-%m-%d %H:%M:%S')  # Cílový formát data
-    spz = re.sub(r'[\s.-]', '', info['fieldInstances'][0]['textValue']).upper()
+        '%d. %m. %Y %H:%M:%S')  # Cílový formát data
+    spz = re.sub(r'\s|\.|-|:', '',
+                 info['fieldInstances'][0]['textValue']).upper()
     csv_writer_b.writerow([info['id'], formatted_time,
                           info['name'], spz])
 
@@ -107,69 +107,170 @@ print("Data úspěšně roztříděna a zapsána do CSV souborů.")
 
 # Vygenerování PDF reportů pro každou skupinu dat
 
-
 # Načti CSV data
 data_a = []
-with open('report-a.csv', 'r', encoding='utf-8') as file_a:
+with open('report-nakladka.csv', 'r', encoding='utf-8') as file_a:
     csv_reader_a = csv.reader(file_a)
     for row in csv_reader_a:
         data_a.append(row)
 
 data_b = []
-with open('report-b.csv', 'r', encoding='utf-8') as file_b:
+with open('report-vykladka.csv', 'r', encoding='utf-8') as file_b:
     csv_reader_b = csv.reader(file_b)
     for row in csv_reader_b:
         data_b.append(row)
 
-# Vytvoř nový PDF dokument pro první soubor
-pdf_file_a = 'report-a.pdf'
-doc_a = SimpleDocTemplate(pdf_file_a, pagesize=A4)
+# Vytvoř PDF šablonu
+pw = 210  # šířka stránky v mm
+from_time = time_24_hours_ago.strftime('%d. %m. %Y %H:%M:%S')
+creation_time = current_time.strftime('%d. %m. %Y %H:%M:%S')
 
-# Vytvoř nový PDF dokument pro druhý soubor
-pdf_file_b = 'report-b.pdf'
-doc_b = SimpleDocTemplate(pdf_file_b, pagesize=A4)
 
-# Získání unikátních hodnot 'SPZ tahace/vozidla' pro první soubor
+class PDFA(FPDF):
+    def header(self):
+        # Logo
+        self.image('aroyal-logo.png', 10, 8, 24)
+        self.set_font('Arial', 'B', 16)
+        self.cell(80)
+        # Title
+        self.cell(30, 10, 'Report - VYDEJ (Nakladka)', 0, 0, 'C')
+        # Line break
+        self.ln(40)
+
+    # Page footer
+    def footer(self):
+        # Position at 1.5 cm from bottom
+        self.set_y(-15)
+        self.set_font('Arial', '', 12)
+        # Page number
+        self.cell(0, 10, 'Stranka ' + str(self.page_no()) + '/{nb}', 0, 0, 'C')
+
+
+# # Vytvoř nový PDF dokument pro první soubor
+pdf = PDFA()
+pdf.alias_nb_pages()
+pdf.add_page()
+pdf.set_font('Arial', 'B', 32)
+pdf.cell(w=0, h=20, txt="Objekt: DHL - Jazlovice", ln=1)
+pdf.set_font('Arial', 'B', 24)
+pdf.cell(w=0, h=20, txt="VOZIDLA - VYDEJ (Nakladka)", ln=1)
+pdf.set_font('Arial', '', 16)
+pdf.cell(w=70, h=8, txt="Datum vytvoreni reportu: ", ln=0)
+pdf.cell(w=80, h=8, txt=f'{creation_time}', ln=1)
+pdf.cell(w=70, h=8, txt="Casovy interval reportu: ", ln=0)
+pdf.cell(w=80, h=8, txt=f'{from_time} - {creation_time}', ln=1)
+
+# Generate pages with tables for each unique 'SPZ tahace/vozidla' value
 unique_values_a = set(row[3] for row in data_a[1:])
+sorted_values_a = sorted(unique_values_a, key=lambda value: next(
+    row[1] for row in data_a if row[3] == value and row[2] == "1 - Nakládka:"))
 
-# Vytvoření tabulek pro jednotlivé hodnoty 'SPZ tahace/vozidla' pro první soubor
-tables_a = []
-for value in unique_values_a:
-    # Filtrování dat pro aktuální hodnotu
+for value in sorted_values_a:
+    # Filter data for the current value
     filtered_data_a = [row for row in data_a if row[3] == value]
-    # Vytvoření tabulky pro aktuální hodnotu
-    table_a = Table(filtered_data_a, repeatRows=1)
-    table_a.setStyle(TableStyle(
-        [('GRID', (0, 0), (-1, -1), 0.5, colors.black)]))
-    tables_a.append(table_a)
 
-# Přidání tabulek do prvního PDF dokumentu
-elements_a = []
-for table_a in tables_a:
-    elements_a.append(table_a)
-doc_a.build(elements_a)
+    # Extract relevant information for the table
+    nakladka_timestamp = ""
+    odjezd_timestamp = ""
 
-# Získání unikátních hodnot 'SPZ tahace/vozidla' pro druhý soubor
+    for row in filtered_data_a:
+        if row[2] == "1 - Nakládka:":
+            nakladka_timestamp = row[1]
+        elif row[2] == "4 - Odjezd:":
+            odjezd_timestamp = row[1]
+
+    # Add the table to the PDF document
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(w=0, h=10, txt=f"SPZ tahace/vozidla: {value}", ln=1)
+    pdf.ln(5)
+
+    pdf.set_font('Arial', '', 16)
+
+    pdf.cell(40, 10, "Nakladka:", 0)
+    pdf.cell(40, 10, nakladka_timestamp, 0)
+    pdf.ln(10)
+    pdf.cell(40, 10, "Odjezd:", 0)
+    pdf.cell(40, 10, odjezd_timestamp, 0)
+    pdf.ln(10)
+
+pdf.output(f'./report-nakladka.pdf', 'F')
+
+
+class PDFB(FPDF):
+    def header(self):
+        # Logo
+        self.image('aroyal-logo.png', 10, 8, 24)
+        self.set_font('Arial', 'B', 16)
+        self.cell(80)
+        # Title
+        self.cell(30, 10, 'Report - PRIJEM (Vykladka)', 0, 0, 'C')
+        # Line break
+        self.ln(40)
+
+    # Page footer
+    def footer(self):
+        # Position at 1.5 cm from bottom
+        self.set_y(-15)
+        self.set_font('Arial', '', 12)
+        # Page number
+        self.cell(0, 10, 'Stranka ' + str(self.page_no()) + '/{nb}', 0, 0, 'C')
+
+
+# # Vytvoř nový PDF dokument pro druhý soubor
+pdf = PDFB()
+pdf.alias_nb_pages()
+pdf.add_page()
+pdf.set_font('Arial', 'B', 32)
+pdf.cell(w=0, h=20, txt="Objekt: DHL - Jazlovice", ln=1)
+pdf.set_font('Arial', 'B', 24)
+pdf.cell(w=0, h=20, txt="VOZIDLA - PRIJEM (Vykladka)", ln=1)
+pdf.set_font('Arial', '', 16)
+pdf.cell(w=70, h=8, txt="Datum vytvoreni reportu: ", ln=0)
+pdf.cell(w=80, h=8, txt=f'{creation_time}', ln=1)
+pdf.cell(w=70, h=8, txt="Casovy interval reportu: ", ln=0)
+pdf.cell(w=80, h=8, txt=f'{from_time} - {creation_time}', ln=1)
+
+# Generate pages with tables for each unique 'SPZ tahace/vozidla' value
 unique_values_b = set(row[3] for row in data_b[1:])
+sorted_values_b = sorted(unique_values_b, key=lambda value: next(
+    (row[1] for row in data_b if row[3] == value and row[2] == "2 - Vykládka:"), ""))
 
-# Vytvoření tabulek pro jednotlivé hodnoty 'SPZ tahace/vozidla' pro druhý soubor
-tables_b = []
-for value in unique_values_b:
-    # Filtrování dat pro aktuální hodnotu
+for value in sorted_values_b:
+    # Filter data for the current value
     filtered_data_b = [row for row in data_b if row[3] == value]
-    # Vytvoření tabulky pro aktuální hodnotu
-    table_b = Table(filtered_data_b, repeatRows=1)
-    table_b.setStyle(TableStyle(
-        [('GRID', (0, 0), (-1, -1), 0.5, colors.black)]))
-    tables_b.append(table_b)
 
-# Přidání tabulek do druhého PDF dokumentu
-elements_b = []
-for table_b in tables_b:
-    elements_b.append(table_b)
-doc_b.build(elements_b)
+    # Check if the SPZ group has a non-empty "2 - Vykládka:" value
+    if any(row[2] == "2 - Vykládka:" for row in filtered_data_b):
+        # Extract relevant information for the table
+        vykladka_timestamp = ""
+        odjezd_timestamp = ""
+
+        for row in filtered_data_b:
+            if row[2] == "2 - Vykládka:":
+                vykladka_timestamp = row[1]
+            elif row[2] == "4 - Odjezd:":
+                odjezd_timestamp = row[1]
+
+        # Add the table to the PDF document
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(w=0, h=10, txt=f"SPZ tahace/vozidla: {value}", ln=1)
+        pdf.ln(5)
+
+        pdf.set_font('Arial', '', 16)
+
+        pdf.cell(40, 10, "Vykladka:", 0)
+        pdf.cell(40, 10, vykladka_timestamp, 0)
+        pdf.ln(10)
+        pdf.cell(40, 10, "Odjezd:", 0)
+        pdf.cell(40, 10, odjezd_timestamp, 0)
+        pdf.ln(10)
+
+pdf.output(f'./report-vykladka.pdf', 'F')
 
 print("PDF soubory byly úspěšně vytvořeny.")
+
 # - file log (datetime + error?)
 
 # Odeslání reportů na email
